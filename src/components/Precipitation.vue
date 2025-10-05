@@ -1,32 +1,59 @@
 
 <template>
-	<div class="precip-view">
-		<h2 class="title">Predicción de Probabilidad de Precipitación</h2>
-		<div class="location-controls">
-			<button @click="showMap = true">Seleccionar en mapa</button>
-			<button @click="getCurrentLocation">Usar ubicación actual</button>
-			<span v-if="lat && lon" class="coords">Lat: {{ lat }}, Lon: {{ lon }}</span>
-			<label style="margin-left:1rem;">Intervalo:
-				<select v-model="interval">
-					 <option value="1H">1H</option>
-             <option value="3H">3H</option>
-             <option value="6H">6H</option>
-          <option value="12H">12H</option>
-          <option value="24H">24H</option>
-				</select>
-			</label>
-			<label style="margin-left:1rem;">Fecha final:
-				<input type="date" v-model="endDate" />
-			</label>
+		<div class="precip-view">
+			<h2 class="title">Precipitation Probability Forecast</h2>
+			<div class="location-controls">
+				<button @click="showMap = true">Select on map</button>
+				<button @click="getCurrentLocation">Use current location</button>
+				<span v-if="lat && lon" class="coords">Lat: {{ lat }}, Lon: {{ lon }}</span>
+				<label style="margin-left:1rem;">Interval:
+					<select v-model="interval">
+						 <option value="1H">1H</option>
+						 <option value="3H">3H</option>
+						 <option value="6H">6H</option>
+						 <option value="12H">12H</option>
+						 <option value="24H">24H</option>
+					</select>
+				</label>
+				<label style="margin-left:1rem;">End date:
+					<input type="date" v-model="endDate" />
+				</label>
+				<!-- removed extra closing div to fix template error -->
+			
 		</div>
-		<canvas ref="chartRef" width="600" height="300"></canvas>
-		<div v-if="showMap" class="modal">
-			<div class="modal-content">
-				<div id="map" style="height: 400px;"></div>
-				<button @click="showMap = false">Cerrar</button>
+
+		<div>
+<canvas ref="chartRef" width="600" height="300"></canvas>
+			<div v-if="showMap" class="modal">
+				<div class="modal-content">
+					<div id="map" style="height: 400px;"></div>
+					<button @click="showMap = false">Close</button>
+				</div>
 			</div>
 		</div>
+		<div class="text-informative">
+			<h2>Precipitation Probability Widget</h2>
+			<p>
+				This widget shows the probability of precipitation at a specific geographic point, using data from the <code>/api/v1/probability_precipitation</code> endpoint. You can select the date range, interval, location, and parameter to analyze how rain probability evolves over time.
+				<br><br>
+				<strong>Parameters:</strong>
+				<ul>
+					<li><strong>start</strong>: Start date and time in ISO8601 format (e.g., 2025-10-04T00:00:00Z).</li>
+					<li><strong>end</strong>: End date and time in ISO8601 format (e.g., 2025-10-07T00:00:00Z).</li>
+					<li><strong>interval</strong>: Interval between data points (e.g., 1H for every hour).</li>
+					<li><strong>parameters</strong>: Precipitation probability parameter (default: <code>prob_precip_1h:p</code>).</li>
+					<li><strong>lat</strong>: Latitude of the query point.</li>
+					<li><strong>lon</strong>: Longitude of the query point.</li>
+				</ul>
+				<br>
+				The chart helps visualize how rain probability changes during the selected period, making it easier to identify precipitation events.
+			</p>
+		</div>
 	</div>
+		<div>
+			<button @click="downloadJson">Download JSON</button>
+			<button @click="downloadCsv">Download CSV</button>
+		</div>
 </template>
 
 <script setup>
@@ -44,13 +71,45 @@ const showMap = ref(false)
 const interval = ref('1H')
 const endDate = ref(new Date().toISOString().slice(0,10)) // formato yyyy-mm-dd
 
+function downloadJson() {
+	const blob = new Blob([JSON.stringify(precipList.value, null, 2)], { type: 'application/json' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `rain${endDate.value}.json`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
+
+function downloadCsv() {
+	if (!precipList.value.length) return
+	const header = 'date,value\n'
+	const rows = precipList.value.map((d) => `${d.date},${d.value}`)
+	const csv = header + rows.join('\n')
+	const blob = new Blob([csv], { type: 'text/csv' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `rain${endDate.value}.csv`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
+
 function formatDate(dateStr) {
 	const d = new Date(dateStr)
-	return d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
+	return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 async function fetchPrecip() {
-	const start = '2025-10-04T11:59:00Z'
+	const start = '2025-10-04T04:59:00Z'
 	const end = endDate.value + 'T11:59:00Z'
 	const url = `http://172.18.0.45:8080/api/v1/precipitation_probability?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&interval=${interval.value}&parameters=prob_precip_1h%3Ap&lat=${lat.value}&lon=${lon.value}&format=json`
 	try {
@@ -81,7 +140,7 @@ function renderChart() {
 			data: {
 				labels: dates.value.map(formatDate),
 				datasets: [{
-					label: 'Probabilidad (%)',
+				label: 'Probability (%)',
 					data: values.value,
 					borderColor: '#10b981',
 					backgroundColor: 'rgba(16,185,129,0.1)',
@@ -90,13 +149,14 @@ function renderChart() {
 				}],
 			},
 			options: {
-				responsive: false,
+				responsive: true,
+				
 				plugins: {
 					legend: { display: true },
 				},
 				scales: {
-					x: { title: { display: true, text: 'Fecha' } },
-					y: { title: { display: true, text: 'Probabilidad (%)' }, min: 0, max: 100 },
+				x: { title: { display: true, text: 'Date' } },
+				y: { title: { display: true, text: 'Probability (%)' }, min: 0, max: 55 },
 				},
 			},
 		})
@@ -110,12 +170,12 @@ function getCurrentLocation() {
 				lat.value = pos.coords.latitude
 				lon.value = pos.coords.longitude
 			},
-			err => {
-				alert('No se pudo obtener la ubicación actual')
-			}
+					err => {
+						alert('Could not get current location')
+					}
 		)
 	} else {
-		alert('Geolocalización no soportada')
+		alert('Geolocation not supported')
 	}
 }
 
@@ -173,7 +233,7 @@ function initMap() {
 
 <style scoped>
 .precip-view {
-	max-width: 700px;
+	max-width: 100%;
 	margin: 2rem auto;
 	background: #fff;
 	border-radius: 1rem;

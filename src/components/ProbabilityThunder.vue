@@ -31,7 +31,12 @@ const areaBotRight = ref({ lat: 18, lon: -90 })
 const selectingArea = ref(false)
 
 function getApiUrl() {
-  return `http://172.18.0.45:8080/api/v1/thunderstorm_probabilities?parameters=prob_tstorm_12h%3Ap&grid_cords_top_left=${areaTopLeft.value.lat}%2C${areaTopLeft.value.lon}&grid_cords_bot_right=${areaBotRight.value.lat}%2C${areaBotRight.value.lon}&grid=25x25&datetime=${encodeURIComponent(datetime.value)}&format=json`
+  // Construir coords en formato lat1,lon1_lat2,lon2
+  const topLeft = `${areaTopLeft.value.lat},${areaTopLeft.value.lon}`
+  const botRight = `${areaBotRight.value.lat},${areaBotRight.value.lon}`
+  const coords = `${topLeft}_${botRight}`
+  const dt = encodeURIComponent(datetime.value)
+  return `http://172.18.0.45:8080/api/v1/thunderstorm_probabilities?parameters=prob_tstorm_12h%3Ap&coords=${coords}&datetime=${dt}&format=json`
 }
 
 async function fetchThunderMap() {

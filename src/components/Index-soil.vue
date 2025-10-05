@@ -1,41 +1,62 @@
 
 <template>
-	<div class="soil-view">
-		<h2 class="title">Índice de Humedad del Suelo (-5cm)</h2>
-		<div class="controls">
-			<button @click="showMap = true">Seleccionar en mapa</button>
-			<button @click="getCurrentLocation">Usar ubicación actual</button>
-			<span v-if="lat && lon" class="coords">Lat: {{ lat }}, Lon: {{ lon }}</span>
-			<label>Fecha inicial:
-				<input type="date" v-model="startDate" />
-			</label>
-			<label>Días:
-				<input type="number" min="1" max="15" v-model="days" />
-			</label>
-			<label>Intervalo:
-				<select v-model="interval">
-					<option value="PT6H">6H</option>
-					<option value="PT12H">12H</option>
-					<option value="PT24H">24H</option>
-				</select>
-			</label>
-			<label>Latitud:
-				<input type="number" step="0.0001" v-model="lat" />
-			</label>
-			<label>Longitud:
-				<input type="number" step="0.0001" v-model="lon" />
-			</label>
-			<button @click="fetchSoil">Actualizar</button>
-		</div>
-		<canvas ref="chartRef" width="600" height="300"></canvas>
-		
-		<div v-if="showMap" class="modal">
-			<div class="modal-content">
-				<div id="map" style="height: 400px;"></div>
-				<button @click="showMap = false">Cerrar</button>
+		<div class="soil-view">
+			<h2 class="title">Soil Moisture Index (-5cm)</h2>
+			<div class="controls">
+				<button @click="showMap = true">Select on map</button>
+				<button @click="getCurrentLocation">Use current location</button>
+				<span v-if="lat && lon" class="coords">Lat: {{ lat }}, Lon: {{ lon }}</span>
+				<label>Start date:
+					<input type="date" v-model="startDate" />
+				</label>
+				<label>Days:
+					<input type="number" min="1" max="15" v-model="days" />
+				</label>
+				<label>Interval:
+					<select v-model="interval">
+						<option value="PT6H">6H</option>
+						<option value="PT12H">12H</option>
+						<option value="PT24H">24H</option>
+					</select>
+				</label>
+				<label>Latitude:
+					<input type="number" step="0.0001" v-model="lat" />
+				</label>
+				<label>Longitude:
+					<input type="number" step="0.0001" v-model="lon" />
+				</label>
+				<button @click="fetchSoil">Update</button>
+			</div>
+			<canvas ref="chartRef" width="600" height="300"></canvas>
+    
+			<div v-if="showMap" class="modal">
+				<div class="modal-content">
+					<div id="map" style="height: 400px;"></div>
+					<button @click="showMap = false">Close</button>
+				</div>
 			</div>
 		</div>
-	</div>
+		<div class="text-informative">
+			<h2>Soil Moisture Index Widget</h2>
+			<p>
+				The soil moisture index indicates the wetness level of the soil. This index is calculated using the permanent wilting point and field capacity, both depending on geographic location (soil type). The index is 0 at the permanent wilting point and 1 at field capacity. After rainfall events, the index can exceed 1. The endpoint provides the index for 4 depth levels: -5cm, -15cm, -50cm, and -150cm.<br><br>
+				<strong>Parameters:</strong>
+				<ul>
+					<li><strong>dateTime</strong>: Initial date in ISO8601 format (e.g., 2025-10-04T00:00:00Z).</li>
+					<li><strong>parameters</strong>: <code>soil_moisture_index_-5cm:idx, soil_moisture_index_-15cm:idx, soil_moisture_index_-50cm:idx, soil_moisture_index_-150cm:idx</code> for the 4 depth levels.</li>
+					<li><strong>lat</strong>: Latitude of the query point.</li>
+					<li><strong>lon</strong>: Longitude of the query point.</li>
+					<li><strong>daysFromNow</strong>: Range of days to query (e.g., P5D for 5 days).</li>
+					<li><strong>interval</strong>: Interval between data points (e.g., PT1H for every hour).</li>
+				</ul>
+				<br>
+				The chart allows you to analyze the evolution of soil moisture at different depths and detect saturation or drought events.
+			</p>
+		</div>
+		<div>
+			<button @click="downloadJson">Download JSON</button>
+			<button @click="downloadCsv">Download CSV</button>
+		</div>
 </template>
 
 <script setup>
@@ -53,6 +74,38 @@ const interval = ref('PT6H')
 const lat = ref(20.5944)
 const lon = ref(-100.3901)
 const showMap = ref(false)
+
+function downloadJson() {
+	const blob = new Blob([JSON.stringify(soilList.value, null, 2)], { type: 'application/json' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `soil_moisture_${startDate.value}.json`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
+
+function downloadCsv() {
+	if (!soilList.value.length) return
+	const header = 'date,value\n'
+	const rows = soilList.value.map((d) => `${d.date},${d.value}`)
+	const csv = header + rows.join('\n')
+	const blob = new Blob([csv], { type: 'text/csv' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `soil_moisture_${startDate.value}.csv`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
 
 function formatDate(dateStr) {
 	const d = new Date(dateStr)
@@ -117,7 +170,7 @@ function renderChart() {
 				}],
 			},
 			options: {
-				responsive: false,
+				responsive: true,
 				animation: {
 					duration: 1800,
 					easing: 'easeInOutQuart',
@@ -230,7 +283,7 @@ watch([startDate, days, interval, lat, lon], () => {
 
 <style scoped>
 .soil-view {
-	max-width: 700px;
+	max-width: 100%;
 	margin: 2rem auto;
 	background: #fff;
 	border-radius: 1rem;

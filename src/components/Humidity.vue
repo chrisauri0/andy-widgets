@@ -1,11 +1,12 @@
+
 <template>
   <div class="humidity-view">
-    <h2 class="title">Prediccion de Humedad relativa </h2>
+    <h2 class="title">Relative Humidity Prediction</h2>
     <div class="location-controls">
-      <button @click="showMap = true">Seleccionar en mapa</button>
-      <button @click="getCurrentLocation">Usar ubicación actual</button>
+      <button @click="showMap = true">Select on map</button>
+      <button @click="getCurrentLocation">Use current location</button>
       <span v-if="lat && lon" class="coords">Lat: {{ lat }}, Lon: {{ lon }}</span>
-      <label style="margin-left:1rem;">Intervalo:
+      <label style="margin-left:1rem;">Interval:
         <select v-model="interval">
              <option value="1H">1H</option>
              <option value="3H">3H</option>
@@ -14,7 +15,7 @@
           <option value="24H">24H</option>
         </select>
       </label>
-      <label style="margin-left:1rem;">Fecha final:
+      <label style="margin-left:1rem;">End date:
         <input type="date" v-model="endDate" />
       </label>
     </div>
@@ -23,13 +24,68 @@
     <div v-if="showMap" class="modal">
       <div class="modal-content">
         <div id="map" style="height: 400px;"></div>
-        <button @click="showMap = false">Cerrar</button>
+        <button @click="showMap = false">Close</button>
       </div>
     </div>
   </div>
+
+  <div class="text-informative" style="margin:2rem 0;">
+    <h2>Relative Humidity Widget</h2>
+    <p>
+      This widget displays the evolution of relative humidity at a specific geographic point, using data from the <code>/api/v1/humidity</code> endpoint. You can select the date range, interval, location, and parameter to analyze changes in ambient humidity.
+      <br><br>
+      <strong>Parameters:</strong>
+      <ul>
+        <li><strong>start</strong>: Start date and time in ISO8601 format (e.g., 2025-10-04T00:00:00Z).</li>
+        <li><strong>end</strong>: End date and time in ISO8601 format (e.g., 2025-10-07T00:00:00Z).</li>
+        <li><strong>interval</strong>: Interval between data points (e.g., 1H for every hour).</li>
+        <li><strong>parameters</strong>: Relative humidity parameter (default: <code>humidity_1h:p</code>).</li>
+        <li><strong>lat</strong>: Latitude of the query point.</li>
+        <li><strong>lon</strong>: Longitude of the query point.</li>
+      </ul>
+      <br>
+      The chart allows you to visualize how relative humidity changes over the selected period, helping to identify environmental conditions.
+    </p>
+  </div>
+  <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
+    <button @click="downloadJson">Download JSON</button>
+    <button @click="downloadCsv">Download CSV</button>
+  </div>
+
 </template>
 
 <script setup>
+function downloadJson() {
+  const blob = new Blob([JSON.stringify(humidityList.value, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `Humidity_${startDate.value}.json`
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => {
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, 100)
+}
+
+function downloadCsv() {
+  if (!humidityList.value.length) return
+  const header = 'date,value\n'
+  const rows = humidityList.value.map((d) => `${d.date},${d.value}`)
+  const csv = header + rows.join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `Humidity_${startDate.value}.csv`
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => {
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, 100)
+}
 import { ref, onMounted, watch } from 'vue'
 import Chart from 'chart.js/auto'
 
@@ -82,7 +138,7 @@ function renderChart() {
       data: {
         labels: dates.value.map(formatDate),
         datasets: [{
-          label: 'Humedad (%)',
+          label: 'Humidity (%)',
           data: values.value,
           borderColor: '#3b82f6',
           backgroundColor: 'rgba(59,130,246,0.1)',
@@ -91,13 +147,13 @@ function renderChart() {
         }],
       },
       options: {
-        responsive: false,
+        responsive: true,
         plugins: {
           legend: { display: true },
         },
         scales: {
-          x: { title: { display: true, text: 'Fecha' } },
-          y: { title: { display: true, text: 'Humedad (%)' }, min: 0, max: 100 },
+          x: { title: { display: true, text: 'Date' } },
+          y: { title: { display: true, text: 'Humidity (%)' }, min: 0, max: 100 },
         },
       },
     })
@@ -174,7 +230,7 @@ function initMap() {
 
 <style scoped>
 .humidity-view {
-  max-width: 700px;
+  max-width: 100%;
   margin: 2rem auto;
   background: #fff;
   border-radius: 1rem;

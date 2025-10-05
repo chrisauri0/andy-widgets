@@ -1,18 +1,18 @@
 
 <template>
 	<div class="cloud-view">
-		<h2 class="title">Cobertura de Nubes</h2>
+		<h2 class="title">Cloud Cover</h2>
 			<div class="controls">
-				<button @click="showMap = true">Seleccionar en mapa</button>
-				<button @click="getCurrentLocation">Usar ubicación actual</button>
+				<button @click="showMap = true">Select on map</button>
+				<button @click="getCurrentLocation">Use current location</button>
 				<span v-if="lat && lon" class="coords">Lat: {{ lat }}, Lon: {{ lon }}</span>
-				<label>Fecha inicial:
+				<label>Start date:
 					<input type="date" v-model="startDate" />
 				</label>
-				<label>Días:
+				<label>Days:
 					<input type="number" min="1" max="7" v-model="days" />
 				</label>
-				<label>Intervalo:
+				<label>Interval:
 					<select v-model="interval">
 						<option value="PT1H">1H</option>
 						<option value="PT3H">3H</option>
@@ -20,26 +20,81 @@
 						<option value="PT12H">12H</option>
 					</select>
 				</label>
-				<label>Latitud:
+				<label>Latitude:
 					<input type="number" step="0.0001" v-model="lat" />
 				</label>
-				<label>Longitud:
+				<label>Longitude:
 					<input type="number" step="0.0001" v-model="lon" />
 				</label>
-				<button @click="fetchCloud">Actualizar</button>
+				<button @click="fetchCloud">Update</button>
 			</div>
 			<div v-if="showMap" class="modal">
 				<div class="modal-content">
 					<div id="map" style="height: 400px;"></div>
-					<button @click="showMap = false">Cerrar</button>
+					<button @click="showMap = false">Close</button>
 				</div>
 			</div>
-		<canvas ref="chartRef" width="600" height="300"></canvas>
-		
+		<canvas  ref="chartRef" width="1000" height="300"></canvas>
 	</div>
+
+
+	<div class="text-informative" style="margin:2rem 0;">
+		<h2>Cloud Cover Widget</h2>
+		<p>
+			This widget displays the evolution of cloud cover at a specific geographic point, using data from the <code>/api/v1/cloud_cover</code> endpoint. You can select the date range, interval, location, and parameter to analyze cloudiness variation.
+			<br><br>
+			<strong>Parameters:</strong>
+			<ul>
+				<li><strong>start</strong>: Start date and time in ISO8601 format (e.g., 2025-10-04T00:00:00Z).</li>
+				<li><strong>end</strong>: End date and time in ISO8601 format (e.g., 2025-10-07T00:00:00Z).</li>
+				<li><strong>interval</strong>: Interval between data points (e.g., 1H for every hour).</li>
+				<li><strong>parameters</strong>: Cloud cover parameter (default: <code>cloud_cover_1h:p</code>).</li>
+				<li><strong>lat</strong>: Latitude of the query point.</li>
+				<li><strong>lon</strong>: Longitude of the query point.</li>
+			</ul>
+			<br>
+			The chart allows you to visualize how cloud cover changes over the selected period, helping to identify cloudy or clear sky conditions.
+		</p>
+	</div>
+	<div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
+		<button @click="downloadJson">Download JSON</button>
+		<button @click="downloadCsv">Download CSV</button>
+	</div>
+
 </template>
 
 <script setup>
+function downloadJson() {
+	const blob = new Blob([JSON.stringify(cloudList.value, null, 2)], { type: 'application/json' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `cobertura_nubes_${startDate.value}.json`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
+
+function downloadCsv() {
+	if (!cloudList.value.length) return
+	const header = 'fecha,valor\n'
+	const rows = cloudList.value.map((d) => `${d.date},${d.value}`)
+	const csv = header + rows.join('\n')
+	const blob = new Blob([csv], { type: 'text/csv' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `cobertura_nubes_${startDate.value}.csv`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
 const showMap = ref(false)
 function getCurrentLocation() {
 	if (navigator.geolocation) {
@@ -148,74 +203,74 @@ function renderChart() {
 		chartInstance.value.destroy()
 	}
 	if (chartRef.value) {
-		// Gradiente para la línea
-		const gradient = chartRef.value.getContext('2d').createLinearGradient(0, 0, 600, 0)
-		gradient.addColorStop(0, '#a5b4fc')
-		gradient.addColorStop(0.5, '#38bdf8')
-		gradient.addColorStop(1, '#f3f4f6')
+			// Gradient for the line
+			const gradient = chartRef.value.getContext('2d').createLinearGradient(0, 0, 600, 0)
+			gradient.addColorStop(0, '#a5b4fc')
+			gradient.addColorStop(0.5, '#38bdf8')
+			gradient.addColorStop(1, '#f3f4f6')
 
-		// Iconos de nube en los máximos
-		const maxVal = Math.max(...values.value)
-		const cloudIcons = values.value.map(v => v === maxVal ? '☁️' : '')
+			// Cloud icons for max values
+			const maxVal = Math.max(...values.value)
+			const cloudIcons = values.value.map(v => v === maxVal ? '☁️' : '')
 
-		chartInstance.value = new Chart(chartRef.value, {
-			type: 'line',
-			data: {
-				labels: dates.value.map((d, i) => cloudIcons[i] ? cloudIcons[i] + ' ' + formatDate(d) : formatDate(d)),
-				datasets: [{
-					label: 'Cobertura (%)',
-					data: values.value,
-					borderColor: gradient,
-					backgroundColor: 'rgba(168,218,255,0.18)',
-					fill: true,
-					tension: 0.5,
-					pointRadius: values.value.map(v => v === maxVal ? 10 : 4),
-					pointBackgroundColor: values.value.map(v => v === maxVal ? '#38bdf8' : '#a5b4fc'),
-					pointStyle: values.value.map(v => v === maxVal ? 'rectRot' : 'circle'),
-				}],
-			},
-			options: {
-				responsive: false,
-				animation: {
-					duration: 1800,
-					easing: 'easeInOutQuart',
-					animateScale: true,
-					animateRotate: true,
+			chartInstance.value = new Chart(chartRef.value, {
+				type: 'line',
+				data: {
+					labels: dates.value.map((d, i) => cloudIcons[i] ? cloudIcons[i] + ' ' + formatDate(d) : formatDate(d)),
+					datasets: [{
+						label: 'Cloud cover (%)',
+						data: values.value,
+						borderColor: gradient,
+						backgroundColor: 'rgba(168,218,255,0.18)',
+						fill: true,
+						tension: 0.5,
+						pointRadius: values.value.map(v => v === maxVal ? 10 : 4),
+						pointBackgroundColor: values.value.map(v => v === maxVal ? '#38bdf8' : '#a5b4fc'),
+						pointStyle: values.value.map(v => v === maxVal ? 'rectRot' : 'circle'),
+					}],
 				},
-				plugins: {
-					legend: { display: true },
-					title: {
-						display: true,
-						text: 'Cobertura de nubes',
-						color: '#38bdf8',
-						font: { size: 18 }
+				options: {
+					responsive: true,
+					animation: {
+						duration: 1800,
+						easing: 'easeInOutQuart',
+						animateScale: true,
+						animateRotate: true,
 					},
-					tooltip: {
-						callbacks: {
-							label: ctx => `Cobertura: ${ctx.parsed.y} %` + (ctx.parsed.y === maxVal ? ' ☁️' : '')
+					plugins: {
+						legend: { display: true },
+						title: {
+							display: true,
+							text: 'Cloud cover',
+							color: '#38bdf8',
+							font: { size: 18 }
+						},
+						tooltip: {
+							callbacks: {
+								label: ctx => `Cloud cover: ${ctx.parsed.y} %` + (ctx.parsed.y === maxVal ? ' ☁️' : '')
+							}
 						}
-					}
-				},
-				scales: {
-					x: { title: { display: true, text: 'Fecha' }, ticks: { color: '#38bdf8' } },
-					y: { title: { display: true, text: 'Cobertura (%)' }, min: 0, max: 100, ticks: { color: '#38bdf8' } },
-				},
-				elements: {
-					point: {
-						borderWidth: 2,
-						borderColor: '#38bdf8',
-						hoverRadius: 14,
-						hoverBorderWidth: 4,
-						hoverBackgroundColor: '#a5b4fc',
 					},
-					line: {
-						borderWidth: 4,
-						borderJoinStyle: 'round',
-					}
+					scales: {
+						x: { title: { display: true, text: 'Date' }, ticks: { color: '#38bdf8' } },
+						y: { title: { display: true, text: 'Cloud cover (%)' }, min: 0, max: 100, ticks: { color: '#38bdf8' } },
+					},
+					elements: {
+						point: {
+							borderWidth: 2,
+							borderColor: '#38bdf8',
+							hoverRadius: 14,
+							hoverBorderWidth: 4,
+							hoverBackgroundColor: '#a5b4fc',
+						},
+						line: {
+							borderWidth: 4,
+							borderJoinStyle: 'round',
+						}
+					},
 				},
-			},
-		})
-	}
+			})
+		}
 }
 
 onMounted(() => {
@@ -252,7 +307,7 @@ watch([startDate, days, interval, lat, lon], () => {
 	min-width: 450px;
 }
 .cloud-view {
-	max-width: 700px;
+	max-width: 100%;
 	margin: 2rem auto;
 	background: #fff;
 	border-radius: 1rem;

@@ -1,35 +1,89 @@
 
+
 <template>
-	<div class="wind-view">
-		<h2 class="title">Ráfagas de Viento (100m)</h2>
-		<div class="controls">
-			<label>Fecha inicial:
-				<input type="date" v-model="startDate" />
-			</label>
-			<label>Días:
-				<input type="number" min="1" max="10" v-model="days" />
-			</label>
-			<label>Intervalo:
-				<select v-model="interval">
-					<option value="PT1H">1H</option>
-					<option value="PT2H">2H</option>
-					<option value="PT3H">3H</option>
-				</select>
-			</label>
-			<label>Latitud:
-				<input type="number" step="0.0001" v-model="lat" />
-			</label>
-			<label>Longitud:
-				<input type="number" step="0.0001" v-model="lon" />
-			</label>
-			<button @click="fetchWind">Actualizar</button>
+		<div class="wind-view">
+			<h2 class="title">Wind Gusts (100m)</h2>
+			<div class="controls">
+				<label>Start date:
+					<input type="date" v-model="startDate" />
+				</label>
+				<label>Days:
+					<input type="number" min="1" max="10" v-model="days" />
+				</label>
+				<label>Interval:
+					<select v-model="interval">
+						<option value="PT1H">1H</option>
+						<option value="PT2H">2H</option>
+						<option value="PT3H">3H</option>
+					</select>
+				</label>
+				<label>Latitude:
+					<input type="number" step="0.0001" v-model="lat" />
+				</label>
+				<label>Longitude:
+					<input type="number" step="0.0001" v-model="lon" />
+				</label>
+				<button @click="fetchWind">Update</button>
+			</div>
+			<canvas ref="chartRef" width="600" height="300"></canvas>
 		</div>
-		<canvas ref="chartRef" width="600" height="300"></canvas>
-		
-	</div>
+
+		<div class="text-informative" style="margin:2rem 0;">
+			<h2>Wind Gusts Widget</h2>
+			<p>
+				This widget shows the evolution of wind gusts at a specific geographic point, using data from the <code>/api/v1/wind_gust</code> endpoint. You can select the date range, interval, location, and parameter to analyze the intensity and frequency of wind gusts.
+				<br><br>
+				<strong>Parameters:</strong>
+				<ul>
+					<li><strong>start</strong>: Start date and time in ISO8601 format (e.g., 2025-10-04T00:00:00Z).</li>
+					<li><strong>end</strong>: End date and time in ISO8601 format (e.g., 2025-10-07T00:00:00Z).</li>
+					<li><strong>interval</strong>: Interval between data points (e.g., 1H for every hour).</li>
+					<li><strong>parameters</strong>: Wind gust parameter (default: <code>wind_gust_1h:ms</code>).</li>
+					<li><strong>lat</strong>: Latitude of the query point.</li>
+					<li><strong>lon</strong>: Longitude of the query point.</li>
+				</ul>
+				<br>
+				The chart helps visualize how wind gust intensity changes during the selected period, making it easier to identify extreme events.
+			</p>
+		</div>
+<div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
+	<button @click="downloadJson">Download JSON</button>
+	<button @click="downloadCsv">Download CSV</button>
+</div>
 </template>
 
 <script setup>
+function downloadJson() {
+	const blob = new Blob([JSON.stringify(windList.value, null, 2)], { type: 'application/json' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `Intervale_wind${startDate.value}.json`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
+
+function downloadCsv() {
+	if (!windList.value.length) return
+	const header = 'date,value\n'
+	const rows = windList.value.map((d) => `${d.date},${d.value}`)
+	const csv = header + rows.join('\n')
+	const blob = new Blob([csv], { type: 'text/csv' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `Intervale_wind${startDate.value}.csv`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
 import { ref, onMounted, watch } from 'vue'
 import Chart from 'chart.js/auto'
 
@@ -46,7 +100,7 @@ const lon = ref(-100.3901)
 
 function formatDate(dateStr) {
 	const d = new Date(dateStr)
-	return d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
+	return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 function getApiUrl() {
@@ -85,7 +139,7 @@ function renderChart() {
 			data: {
 				labels: dates.value.map(formatDate),
 				datasets: [{
-					label: 'Ráfaga (m/s)',
+				label: 'Gust (m/s)',
 					data: values.value,
 					borderColor: '#6366f1',
 					backgroundColor: 'rgba(99,102,241,0.1)',
@@ -94,13 +148,13 @@ function renderChart() {
 				}],
 			},
 			options: {
-				responsive: false,
+				responsive: true,
 				plugins: {
 					legend: { display: true },
 				},
 				scales: {
-					x: { title: { display: true, text: 'Fecha' } },
-					y: { title: { display: true, text: 'Ráfaga (m/s)' }, min: 0 },
+				x: { title: { display: true, text: 'Date' } },
+				y: { title: { display: true, text: 'Gust (m/s)' }, min: 0 },
 				},
 			},
 		})
@@ -118,7 +172,7 @@ watch([startDate, days, interval, lat, lon], () => {
 
 <style scoped>
 .wind-view {
-	max-width: 700px;
+	max-width: 100%;
 	margin: 2rem auto;
 	background: #fff;
 	border-radius: 1rem;

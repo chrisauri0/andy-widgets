@@ -1,51 +1,78 @@
 <template>
+  
   <div class="air-quality-view">
-    <h2 class="title">Calidad del Aire</h2>
+    <h2 class="title">Air Quality</h2>
     <div class="controls">
-      <label>Fecha inicial:
+      <label>Start date:
         <input type="date" v-model="startDate" />
       </label>
-      <label>Días:
+      <label>Days:
         <input type="number" min="1" max="7" v-model="days" />
       </label>
-      <label>Intervalo:
+      <label>Interval:
         <select v-model="interval">
           <option value="PT1H">1H</option>
           <option value="PT3H">3H</option>
           <option value="PT6H">6H</option>
         </select>
       </label>
-      <label>Latitud:
+      <label>Latitude:
         <input type="number" step="0.0001" v-model="lat" />
       </label>
-      <label>Longitud:
+      <label>Longitude:
         <input type="number" step="0.0001" v-model="lon" />
       </label>
-      <button @click="fetchAirQuality">Actualizar</button>
-      <button @click="showMap = true">Seleccionar en mapa</button>
-      <button @click="getCurrentLocation">Usar ubicación actual</button>
-    </div>
-    <div v-if="showMap" class="modal">
-      <div class="modal-content">
-        <h3>Selecciona una ubicación en el mapa</h3>
-        <div id="map" style="height:350px;"></div>
-        <button @click="showMap = false">Cerrar</button>
-      </div>
+      <button @click="fetchAirQuality">Update</button>
+      <button @click="showMap = true">Select on map</button>
+      <button @click="getCurrentLocation">Use current location</button>
     </div>
     <canvas ref="chartRef" width="600" height="300"></canvas>
-    
+    <div v-if="showMap" class="modal">
+      <div class="modal-content">
+        <h3>Select a location on the map</h3>
+        <div id="map" style="height:350px;"></div>
+        <button @click="showMap = false">Close</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="text-informative">
+    <h2>Air Quality Widget</h2>
+    <p>
+      This widget visualizes the total air quality index, which considers the concentration of particulate matter and trace gases in the environment. It uses data from the <code>/api/v1/total_air_quality</code> endpoint, allowing you to select date, interval, location, and range of days to analyze air quality trends at a specific point.
+      <br><br>
+      <strong>Parameters:</strong>
+      <ul>
+        <li><strong>dateTime</strong>: Initial date in ISO8601 format (e.g., 2025-10-04T00:00:00Z).</li>
+        <li><strong>parameters</strong>: Fixed parameter <code>air_quality:idx</code> for the air quality index.</li>
+        <li><strong>lat</strong>: Latitude of the query point.</li>
+        <li><strong>lon</strong>: Longitude of the query point.</li>
+        <li><strong>daysFromNow</strong>: Range of days to query (e.g., P3D for 3 days).</li>
+        <li><strong>interval</strong>: Interval between data points (e.g., PT3H for every 3 hours).</li>
+      </ul>
+      <br>
+      The chart shows how the air quality index varies over the selected period, helping to identify trends and pollution episodes.
+    </p>
+     
+
+
+  </div>
+  <div>
+    <button @click="downloadJson">Download JSON</button>
+    <button @click="downloadCsv">Download CSV</button>
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import Chart from 'chart.js/auto'
 
-const chartRef = ref(null)
-const chartInstance = ref(null)
+const chartRef = ref<HTMLCanvasElement | null>(null)
+const chartInstance = ref<Chart | null>(null)
 const airList = ref([])
-const dates = ref([])
-const values = ref([])
+const dates = ref<string[]>([])
+const values = ref<number[]>([])
 const startDate = ref(new Date().toISOString().slice(0,10))
 const days = ref(3)
 const interval = ref('PT3H')
@@ -53,9 +80,41 @@ const lat = ref(20)
 const lon = ref(-92)
 const showMap = ref(false)
 
-function formatDate(dateStr) {
+function downloadJson() {
+  const blob = new Blob([JSON.stringify(airList.value, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `AirQuality_ ${startDate.value}.json`
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => {
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, 100)
+}
+
+function downloadCsv() {
+  if (!airList.value.length) return
+  const header = 'date,value\n'
+  const rows = airList.value.map((d: any) => `${d.date},${d.value}`)
+  const csv = header + rows.join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `AirQuality_${startDate.value}.csv`
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => {
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, 100)
+}
+
+function formatDate(dateStr: string) {
   const d = new Date(dateStr)
-  return d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
+  return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 function getApiUrl() {
@@ -69,58 +128,102 @@ async function fetchAirQuality() {
   try {
     const res = await fetch(url)
     const dataJson = await res.json()
-    const coord = dataJson.data[0].coordinates[0]
+    const coord = dataJson?.data?.[0]?.coordinates?.[0]
+    if (!coord || !Array.isArray(coord.dates)) {
+      console.error('Respuesta inesperada del API:', dataJson)
+      dates.value = []
+      values.value = []
+      airList.value = []
+      renderChart() // refresca gráfico vacío
+      return
+    }
+
     dates.value = []
     values.value = []
     airList.value = []
     for (const d of coord.dates) {
       dates.value.push(d.date)
-      values.value.push(d.value)
-      airList.value.push({ date: d.date, value: d.value })
+      values.value.push(Number(d.value ?? 0))
+      airList.value.push({ date: d.date, value: Number(d.value ?? 0) })
     }
+
     renderChart()
   } catch (e) {
     console.error('Error al obtener datos de calidad del aire', e)
   }
 }
 
-function getColor(val) {
+function getColor(val: number) {
   if (val <= 50) return '#22c55e' // buena
   if (val <= 100) return '#eab308' // moderada
   if (val <= 150) return '#f59e42' // mala
   return '#ef4444' // muy mala
 }
-
 function renderChart() {
-  if (chartInstance.value) chartInstance.value.destroy()
-  if (chartRef.value) {
-    chartInstance.value = new Chart(chartRef.value, {
-      type: 'line',
-      data: {
-        labels: dates.value.map(formatDate),
-        datasets: [{
-          label: 'Índice de Calidad del Aire',
-          data: values.value,
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34,197,94,0.1)',
-          pointBackgroundColor: values.value.map(getColor),
-          fill: true,
-          tension: 0.3,
-        }],
+  // destruir instancia previa
+
+ 
+  if (chartInstance.value) {
+    try { chartInstance.value.destroy() } catch (err) { console.warn('Destroy chart error', err) }
+    chartInstance.value = null
+  }
+
+  const canvas = chartRef.value
+  if (!canvas) {
+    console.warn('Canvas no encontrado (chartRef es null)')
+    return
+  }
+
+  const labels = dates.value.map(formatDate)
+  const dataArr = values.value.map(v => Number(v ?? 0))
+  
+  const config = {
+    type: 'line' as const,
+    data: {
+      labels,
+      datasets: [{
+  label: 'Air Quality Index',
+        data: dataArr,
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,0.12)',
+        pointBackgroundColor: dataArr.map(getColor),
+        fill: true,
+        tension: 0.3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: true },
+        tooltip: { enabled: true }
       },
-      options: {
-        responsive: false,
-        plugins: {
-          legend: { display: true },
-        },
-        scales: {
-          x: { title: { display: true, text: 'Fecha' } },
-          y: { title: { display: true, text: 'Índice' }, min: 0 },
-        },
+      scales: {
+  x: { title: { display: true, text: 'Date' } },
+  y: { title: { display: true, text: 'Index' }, min: 0 },
       },
+    },
+    
+  }
+
+  try {
+    // CREAR usando el elemento canvas (no ctx)
+    chartInstance.value = new Chart(canvas as HTMLCanvasElement, config)
+  } catch (err) {
+    console.error('Error al crear Chart.js — config y estado:', {
+      error: err,
+      chartRef: !!canvas,
+      labelsLength: labels.length,
+      dataSample: dataArr.slice(0,5),
+      configSummary: {
+        plugins: Object.keys(config.options.plugins || {}),
+        datasetKeys: Object.keys(config.data.datasets[0])
+      }
     })
+    throw err
   }
 }
+
 
 function getCurrentLocation() {
   if (!navigator.geolocation) return
@@ -132,8 +235,8 @@ function getCurrentLocation() {
 }
 
 // Leaflet map integration
-function loadLeaflet(cb) {
-  if (window.L) return cb()
+function loadLeaflet(cb: () => void) {
+  if ((window as any).L) return cb()
   const link = document.createElement('link')
   link.rel = 'stylesheet'
   link.href = 'https://unpkg.com/leaflet/dist/leaflet.css'
@@ -147,16 +250,17 @@ function loadLeaflet(cb) {
 watch(showMap, (val) => {
   if (val) {
     loadLeaflet(() => {
-      const map = window.L.map('map').setView([lat.value, lon.value], 6)
-      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      const L = (window as any).L
+      const map = L.map('map').setView([lat.value, lon.value], 6)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 18
       }).addTo(map)
-      let marker
-      map.on('click', e => {
+      let marker: any
+      map.on('click', (e: any) => {
         lat.value = e.latlng.lat
         lon.value = e.latlng.lng
         if (marker) map.removeLayer(marker)
-        marker = window.L.marker([lat.value, lon.value]).addTo(map)
+        marker = L.marker([lat.value, lon.value]).addTo(map)
         fetchAirQuality()
         showMap.value = false
         setTimeout(() => map.remove(), 500)
@@ -174,19 +278,23 @@ watch([startDate, days, interval, lat, lon], () => {
 })
 </script>
 
+
 <style scoped>
+
 .air-quality-view {
-  max-width: 700px;
+  max-width: 100%;
   margin: 2rem auto;
   background: #fff;
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 2rem;
+  position: relative;
 }
 .title {
   text-align: center;
   margin-bottom: 1rem;
   color: #22c55e;
+  font-size: 2rem;
 }
 .controls {
   display: flex;
@@ -198,12 +306,17 @@ watch([startDate, days, interval, lat, lon], () => {
 .controls label {
   font-size: 0.95rem;
   color: #444;
+  flex: 1 1 120px;
+  min-width: 120px;
 }
 .controls input, .controls select {
   margin-left: 0.5rem;
   padding: 0.2rem 0.5rem;
   border-radius: 0.3rem;
   border: 1px solid #ccc;
+  width: 100%;
+  max-width: 180px;
+  box-sizing: border-box;
 }
 .controls button {
   background: #22c55e;
@@ -212,6 +325,9 @@ watch([startDate, days, interval, lat, lon], () => {
   border-radius: 0.5rem;
   padding: 0.5rem 1rem;
   cursor: pointer;
+  flex: 1 1 120px;
+  min-width: 120px;
+  margin-top: 0.5rem;
 }
 .list {
   margin-top: 2rem;
@@ -227,6 +343,7 @@ li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 .icon {
   font-size: 1.4rem;
@@ -239,12 +356,34 @@ li {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 1rem;
 }
 .modal-content {
   background: #fff;
   padding: 2rem;
   border-radius: 1rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  min-width: 350px;
+  min-width: 280px;
+  max-width: 95vw;
+}
+@media (max-width: 900px) {
+  .air-quality-view {
+    max-width: 98vw;
+    padding: 1rem;
+  }
+  .controls {
+    flex-direction: column;
+    gap: 0.7rem;
+    align-items: stretch;
+  }
+  .controls label, .controls button {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .modal-content {
+    padding: 1rem;
+    min-width: 0;
+  }
 }
 </style>  

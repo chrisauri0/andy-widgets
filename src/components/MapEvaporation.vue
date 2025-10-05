@@ -1,21 +1,75 @@
 
+
 <template>
-	<div class="evap-map-view">
-		<h2 class="title">Mapa de Evapotranspiración</h2>
-			<div class="controls">
-				<label>Fecha:
-					<input type="date" v-model="date" />
-				</label>
-				<button @click="fetchEvaporation">Actualizar</button>
-				<span style="margin-left:1rem;">Selecciona área en el mapa:</span>
-				<button @click="enableAreaSelect">Seleccionar área</button>
-				<span v-if="areaTopLeft && areaBotRight" class="coords">Área: {{ areaTopLeft.lat }},{{ areaTopLeft.lon }} a {{ areaBotRight.lat }},{{ areaBotRight.lon }}</span>
-			</div>
-		<div id="evap-map" style="height: 500px; width: 100%; margin-top:1rem;"></div>
-	</div>
+		<div class="evap-map-view">
+			<h2 class="title">Evapotranspiration Map</h2>
+				<div class="controls">
+					<label>Date:
+						<input type="date" v-model="date" />
+					</label>
+					<button @click="fetchEvaporation">Update</button>
+					<span style="margin-left:1rem;">Select area on map:</span>
+					<button @click="enableAreaSelect">Select area</button>
+					<span v-if="areaTopLeft && areaBotRight" class="coords">Area: {{ areaTopLeft.lat }},{{ areaTopLeft.lon }} to {{ areaBotRight.lat }},{{ areaBotRight.lon }}</span>
+				</div>
+			<div id="evap-map" style="height: 500px; width: 100%; margin-top:1rem;"></div>
+		</div>
+		<div class="text-informative" style="margin:2rem 0;">
+			<h2>Evapotranspiration Map Widget</h2>
+			<p>
+				This widget shows the estimated evaporation at different geographic points, allowing you to visualize areas with higher or lower water loss due to evaporation. It uses data from the <code>/api/v1/evapotranspiration</code> endpoint and lets you select the area and date range for analysis.
+				<br><br>
+				<strong>Parameters:</strong>
+				<ul>
+					<li><strong>start</strong>: Start date and time in ISO8601 format.</li>
+					<li><strong>end</strong>: End date and time in ISO8601 format.</li>
+					<li><strong>interval</strong>: Interval between data points.</li>
+					<li><strong>parameters</strong>: Evapotranspiration parameter.</li>
+					<li><strong>lat/lon</strong>: Coordinates of the query area.</li>
+				</ul>
+				<br>
+				The map helps identify zones of higher evaporation and analyze spatial and temporal trends.
+			</p>
+		</div>
+<div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
+	<button @click="downloadJson">Download JSON</button>
+	<button @click="downloadCsv">Download CSV</button>
+</div>
+
 </template>
 
 <script setup>
+function downloadJson() {
+	const blob = new Blob([JSON.stringify(evapList.value, null, 2)], { type: 'application/json' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `evaporacion_${startDate.value}.json`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
+
+function downloadCsv() {
+	if (!evapList.value.length) return
+	const header = 'date,value\n'
+	const rows = evapList.value.map((d) => `${d.date},${d.value}`)
+	const csv = header + rows.join('\n')
+	const blob = new Blob([csv], { type: 'text/csv' })
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement('a')
+	a.href = url
+	a.download = `evaporation_${date.value}.csv`
+	document.body.appendChild(a)
+	a.click()
+	setTimeout(() => {
+		document.body.removeChild(a)
+		URL.revokeObjectURL(url)
+	}, 100)
+}
 import { ref, onMounted, watch } from 'vue'
 
 const date = ref(new Date().toISOString().slice(0,10))
