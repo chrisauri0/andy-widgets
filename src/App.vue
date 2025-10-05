@@ -10,7 +10,7 @@ const showMapEvaporation = computed(() => route.path === '/')
 <template>
   <div class="app-container">
     <header class="nav-bar">
-      <h1 class="logo"> <RouterLink to="/" class="nav-link">Andy</RouterLink></h1>
+      <h1 class="logo"> <RouterLink to="/" class="nav-link">ANDY</RouterLink></h1>
       <nav class="nav-links">
         
         <div class="link-group">
@@ -43,7 +43,9 @@ const showMapEvaporation = computed(() => route.path === '/')
   background: linear-gradient(135deg, #e3f2fd, #bbdefb);
   font-family: "Poppins", sans-serif;
   color: #222;
+  font-family: 'IosevkaNerdFont', monospace;
 }
+
 .nav-link.router-link-active {
   background-color: #1565c0;
   color: white;
@@ -151,5 +153,9 @@ const showMapEvaporation = computed(() => route.path === '/')
   .dashboard-grid {
     padding: 20px;
   }
+  @font-face {
+  font-family: 'IosevkaNerdFont';
+  src: url('@/assets/fonts/IosevkaNerdFont-Regular.ttf') format('truetype');
+}
 }
 </style>
